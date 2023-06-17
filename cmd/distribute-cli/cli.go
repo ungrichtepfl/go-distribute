@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/ungrichtepfl/go-distribute/pkg/distribute"
+	"github.com/ungrichtepfl/go-distribute/pkg/excel"
 )
 
 func main() {
-	distribute.Foo()
+	excel.NameToEmail("test/data/test_info.xlsx", 0, 2, nil, nil, nil, nil)
 }
