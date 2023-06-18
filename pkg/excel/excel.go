@@ -6,58 +6,118 @@ import (
 	"strings"
 )
 
-func EmailToName(file_path string, first_name_col uint64, email_col uint64, last_name_col *uint64, sheet_name *string, start *uint64, stop *uint64) (*map[string]string, *[]string, error) {
+type NameEmail struct {
+	Name  string
+	Email string
+}
+
+type Void struct{}
+
+type AnomalyType int
+
+const (
+	DuplicateNames AnomalyType = iota
+	DuplicateEmails
+	NamesWithNoEmails
+	EmailsWithNoNames
+	NoEmailAndMail
+)
+
+type Anomaly struct {
+	Type        AnomalyType
+	LineNumber  uint64
+	LineContent []string
+}
+
+type RawData struct {
+	NameEmails []NameEmail
+	Anomalies  []Anomaly
+}
+
+func EmailToName(file_path string, first_name_col uint64, email_col uint64, last_name_col *uint64, sheet_name *string, start *uint64, stop *uint64) (RawData, error) {
 
 	rows, stride_from_document_start, err := getRows(file_path, sheet_name, start, stop)
 	if err != nil {
-		return nil, nil, err
+		return RawData{}, err
 	}
 
 	return getEmailNameMap(rows, first_name_col, email_col, last_name_col, stride_from_document_start)
 
 }
 
-func getEmailNameMap(rows [][]string, first_name_col uint64, email_col uint64, last_name_col *uint64, stride_from_start uint64) (*map[string]string, *[]string, error) {
+func getEmailNameMap(rows [][]string, first_name_col uint64, email_col uint64, last_name_col *uint64, stride_from_start uint64) (RawData, error) {
 
 	if int(first_name_col) > len(rows[0]) {
-		return nil, nil, fmt.Errorf("First name column index out of range. got %d, max %d. Row: %v", first_name_col, len(rows[0]), rows[0])
+		return RawData{}, fmt.Errorf("First name column index out of range. got %d, max %d. Row: %v", first_name_col, len(rows[0]), rows[0])
 	}
 	if int(email_col) > len(rows[0]) {
-		return nil, nil, fmt.Errorf("Email column index out of range. got %d, max %d", email_col, len(rows[0]))
+		return RawData{}, fmt.Errorf("Email column index out of range. got %d, max %d", email_col, len(rows[0]))
 	}
 	if last_name_col != nil && int(*last_name_col) > len(rows[0]) {
-		return nil, nil, fmt.Errorf("Last name column index out of range. got %d, max %d", *last_name_col, len(rows[0]))
+		return RawData{}, fmt.Errorf("Last name column index out of range. got %d, max %d", *last_name_col, len(rows[0]))
 	}
 
-	email_name_map := make(map[string]string, len(rows))
+	name_emails := make([]NameEmail, 0, len(rows))
+	anomalies := make([]Anomaly, 0, 10)
 
-	var names_with_no_emails []string
+	email_set := make(map[string]Void, len(rows))
+	name_set := make(map[string]Void, len(rows))
 
 	for i, row := range rows {
+
+		current_row_in_excel := stride_from_start + uint64(i)
+
 		first_name := strings.TrimSpace(row[first_name_col])
 		email := strings.TrimSpace(row[email_col])
 		last_name := ""
 		if last_name_col != nil {
 			last_name = strings.TrimSpace(row[*last_name_col])
 		}
+
 		var name string
 		if last_name != "" {
 			name = first_name + " " + last_name
 		} else {
 			name = first_name
 		}
+
 		if name == "" && email == "" {
-			fmt.Printf("No name and email for some row %d found found. Skipping row! Row: %v.\n", stride_from_start+uint64(i), row)
+			fmt.Printf("No name and email for some row %d found found. Skipping row! Row: %v.\n", current_row_in_excel, row)
+			anomalies = append(anomalies, Anomaly{NoEmailAndMail, current_row_in_excel, row})
 			continue
 		}
+
 		if email == "" {
-			names_with_no_emails = append(names_with_no_emails, name)
+			fmt.Printf("No email for %s found. Row: %v.\n", name, row)
+			anomalies = append(anomalies, Anomaly{NamesWithNoEmails, current_row_in_excel, row})
 			continue
 		}
-		email_name_map[name] = email
+
+		if name == "" {
+			fmt.Printf("No name for %s found. Row: %v.\n", email, row)
+			anomalies = append(anomalies, Anomaly{EmailsWithNoNames, current_row_in_excel, row})
+			continue
+		}
+
+		if _, duplicate := email_set[email]; duplicate {
+			fmt.Printf("Duplicate email %s found. Row: %v.\n", name, row)
+			anomalies = append(anomalies, Anomaly{DuplicateEmails, current_row_in_excel, row})
+		} else {
+			email_set[email] = Void{}
+		}
+
+		if _, duplicate := name_set[name]; duplicate {
+			fmt.Printf("Duplicate name %s found. Row: %v.\n", name, row)
+			anomalies = append(anomalies, Anomaly{DuplicateNames, current_row_in_excel, row})
+		} else {
+			name_set[name] = Void{}
+		}
+
+		name_emails = append(name_emails, NameEmail{name, email})
 
 	}
-	return &email_name_map, &names_with_no_emails, nil
+
+	return RawData{name_emails, anomalies}, nil
 }
 
 func getRows(file_path string, sheet_name *string, start *uint64, stop *uint64) ([][]string, uint64, error) {
@@ -105,8 +165,6 @@ func getRows(file_path string, sheet_name *string, start *uint64, stop *uint64) 
 	rows = rows[stride_from_document_start:]
 
 	makeRowsConsistent(rows, table_width)
-
-	printRows(rows)
 
 	return rows, stride_from_document_start, nil
 
