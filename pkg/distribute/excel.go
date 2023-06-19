@@ -1,38 +1,10 @@
-package excel
+package distribute
 
 import (
 	"fmt"
 	"github.com/xuri/excelize/v2"
 	"strings"
 )
-
-type NameEmail struct {
-	Name  string
-	Email string
-}
-
-type Void struct{}
-
-type AnomalyType int
-
-const (
-	DuplicateNames AnomalyType = iota
-	DuplicateEmails
-	NamesWithNoEmails
-	EmailsWithNoNames
-	NoEmailAndMail
-)
-
-type Anomaly struct {
-	Type        AnomalyType
-	LineNumber  uint64
-	LineContent []string
-}
-
-type RawData struct {
-	NameEmails []NameEmail
-	Anomalies  []Anomaly
-}
 
 func EmailToName(file_path string, first_name_col uint64, email_col uint64, last_name_col *uint64, sheet_name *string, start *uint64, stop *uint64) (RawData, error) {
 
