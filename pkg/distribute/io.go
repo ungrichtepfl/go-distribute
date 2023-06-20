@@ -7,19 +7,24 @@ import (
 	"strings"
 )
 
-func ListPDFs(path string, recursive bool) ([]string, error) {
+func ListByFileType(path string, file_types []FileType, recursive bool) ([]string, error) {
+
 	all_files, err := listDirectory(path, recursive)
 	if err != nil {
 		return nil, err
 	}
 
-	pdfs := make([]string, 0, len(all_files))
+	filtered_files := make([]string, 0, len(all_files))
 	for _, file := range all_files {
-		if filepath.Ext(file) == ".pdf" {
-			pdfs = append(pdfs, file)
+		ext := strings.ToLower(filepath.Ext(file))
+		for _, extension := range file_types {
+			if ext == extension {
+				filtered_files = append(filtered_files, file)
+				break
+			}
 		}
 	}
-	return pdfs, nil
+	return filtered_files, nil
 }
 
 func listDirectory(path string, recursive bool) ([]string, error) {

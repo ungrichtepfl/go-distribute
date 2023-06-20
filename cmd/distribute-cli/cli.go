@@ -7,18 +7,32 @@ import (
 
 func main() {
 	last_name_col := uint64(0)
-	file_path := `test/data/test_info.xlsx`
-	println(file_path)
-	raw_data, err := distribute.EmailToName(file_path, 1, 3, &last_name_col, nil, nil, nil)
-	fmt.Println(raw_data)
-	fmt.Println(err)
+	file_path := "test/data/test_info.xlsx"
+	document_dir := "test/data/documents"
+	excel_config := distribute.ExcelConfig{
+		FilePath:     file_path,
+		FirstNameCol: 1,
+		LastNameCol:  &last_name_col,
+		EmailCol:     3,
+		SheetName:    nil,
+		StartRow:     nil,
+		EndRow:       nil,
+	}
+	config := distribute.Config{
+		ExcelConfig:     excel_config,
+		DocumentDir:     document_dir,
+		FileTypes:       []distribute.FileType{distribute.PDF, distribute.TXT},
+		RecursiveSearch: true,
+	}
+	lexed_data, err := distribute.EmailToName(config.ExcelConfig)
 
-	dir := "test/data/documents"
-	files, err := distribute.ListPDFs(dir, false)
-	fmt.Println(files)
-	fmt.Println(err)
-	files, err = distribute.ListPDFs(dir, true)
-	fmt.Println(files)
-	fmt.Println(err)
+	fmt.Println("Lexed Data:\n", lexed_data)
+	fmt.Println("Error:\n", err)
+
+	fmt.Println("------------------------------------------------------")
+
+	parsed_data, err := distribute.NameEmailToDocuments(config, lexed_data.NameEmails)
+	fmt.Println("Parsed Data\n", parsed_data)
+	fmt.Println("Error:\n", err)
 
 }

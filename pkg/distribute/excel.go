@@ -3,34 +3,36 @@ package distribute
 import (
 	"fmt"
 	"github.com/xuri/excelize/v2"
+	"log"
 	"strings"
 )
 
-func EmailToName(file_path string, first_name_col uint64, email_col uint64, last_name_col *uint64, sheet_name *string, start *uint64, stop *uint64) (RawData, error) {
+func EmailToName(excel_config ExcelConfig) (LexedData, error) {
 
-	rows, stride_from_document_start, err := getRows(file_path, sheet_name, start, stop)
+	rows, stride_from_document_start, err := getRows(excel_config.FilePath, excel_config.SheetName, excel_config.StartRow, excel_config.EndRow)
+
 	if err != nil {
-		return RawData{}, err
+		return LexedData{}, err
 	}
 
-	return getEmailNameMap(rows, first_name_col, email_col, last_name_col, stride_from_document_start)
+	return getEmailNameMap(rows, excel_config.FirstNameCol, excel_config.EmailCol, excel_config.LastNameCol, stride_from_document_start)
 
 }
 
-func getEmailNameMap(rows [][]string, first_name_col uint64, email_col uint64, last_name_col *uint64, stride_from_start uint64) (RawData, error) {
+func getEmailNameMap(rows [][]string, first_name_col uint64, email_col uint64, last_name_col *uint64, stride_from_start uint64) (LexedData, error) {
 
 	if int(first_name_col) > len(rows[0]) {
-		return RawData{}, fmt.Errorf("First name column index out of range. got %d, max %d. Row: %v", first_name_col, len(rows[0]), rows[0])
+		return LexedData{}, fmt.Errorf("First name column index out of range. got %d, max %d. Row: %v", first_name_col, len(rows[0]), rows[0])
 	}
 	if int(email_col) > len(rows[0]) {
-		return RawData{}, fmt.Errorf("Email column index out of range. got %d, max %d", email_col, len(rows[0]))
+		return LexedData{}, fmt.Errorf("Email column index out of range. got %d, max %d", email_col, len(rows[0]))
 	}
 	if last_name_col != nil && int(*last_name_col) > len(rows[0]) {
-		return RawData{}, fmt.Errorf("Last name column index out of range. got %d, max %d", *last_name_col, len(rows[0]))
+		return LexedData{}, fmt.Errorf("Last name column index out of range. got %d, max %d", *last_name_col, len(rows[0]))
 	}
 
 	name_emails := make([]NameEmail, 0, len(rows))
-	anomalies := make([]Anomaly, 0, 10)
+	anomalies := make([]LexerAnomaly, 0, 10)
 
 	email_set := make(map[string]Void, len(rows))
 	name_set := make(map[string]Void, len(rows))
@@ -54,33 +56,39 @@ func getEmailNameMap(rows [][]string, first_name_col uint64, email_col uint64, l
 		}
 
 		if name == "" && email == "" {
-			fmt.Printf("No name and email for some row %d found found. Skipping row! Row: %v.\n", current_row_in_excel, row)
-			anomalies = append(anomalies, Anomaly{NoEmailAndMail, current_row_in_excel, row})
+			log.Printf("No name and email for some row %d found found. Skipping row! Row: %v.\n", current_row_in_excel, row)
+			anomalies = append(anomalies, LexerAnomaly{NoEmailAndMail, current_row_in_excel, row})
 			continue
 		}
 
 		if email == "" {
-			fmt.Printf("No email for %s found. Row: %v.\n", name, row)
-			anomalies = append(anomalies, Anomaly{NamesWithNoEmails, current_row_in_excel, row})
+			log.Printf("No email for %s found. Row %d: %v.\n", name, current_row_in_excel, row)
+			anomalies = append(anomalies, LexerAnomaly{NamesWithNoEmails, current_row_in_excel, row})
 			continue
 		}
 
 		if name == "" {
-			fmt.Printf("No name for %s found. Row: %v.\n", email, row)
-			anomalies = append(anomalies, Anomaly{EmailsWithNoNames, current_row_in_excel, row})
+			log.Printf("No name for %s found. Row %d: %v.\n", email, current_row_in_excel, row)
+			anomalies = append(anomalies, LexerAnomaly{EmailsWithNoNames, current_row_in_excel, row})
+			continue
+		}
+
+		if !IsValidEmail(email) {
+			log.Printf("Invalid email %s found. Row %d: %v.\n", email, current_row_in_excel, row)
+			anomalies = append(anomalies, LexerAnomaly{WrongEmailFormat, current_row_in_excel, row})
 			continue
 		}
 
 		if _, duplicate := email_set[email]; duplicate {
-			fmt.Printf("Duplicate email %s found. Row: %v.\n", name, row)
-			anomalies = append(anomalies, Anomaly{DuplicateEmails, current_row_in_excel, row})
+			log.Printf("Duplicate email %s found. Row %d: %v.\n", email, current_row_in_excel, row)
+			anomalies = append(anomalies, LexerAnomaly{DuplicateEmails, current_row_in_excel, row})
 		} else {
 			email_set[email] = Void{}
 		}
 
 		if _, duplicate := name_set[name]; duplicate {
-			fmt.Printf("Duplicate name %s found. Row: %v.\n", name, row)
-			anomalies = append(anomalies, Anomaly{DuplicateNames, current_row_in_excel, row})
+			log.Printf("Duplicate name %s found. Row %d: %v.\n", name, current_row_in_excel, row)
+			anomalies = append(anomalies, LexerAnomaly{DuplicateNames, current_row_in_excel, row})
 		} else {
 			name_set[name] = Void{}
 		}
@@ -89,7 +97,7 @@ func getEmailNameMap(rows [][]string, first_name_col uint64, email_col uint64, l
 
 	}
 
-	return RawData{name_emails, anomalies}, nil
+	return LexedData{name_emails, anomalies}, nil
 }
 
 func getRows(file_path string, sheet_name *string, start *uint64, stop *uint64) ([][]string, uint64, error) {
