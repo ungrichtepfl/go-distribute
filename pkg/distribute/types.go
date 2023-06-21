@@ -2,9 +2,43 @@ package distribute
 
 type Config struct {
 	ExcelConfig     ExcelConfig
+	EmailConfig     EmailConfig
+	MailSubject     string
+	MailBody        string
 	DocumentDir     string
 	FileTypes       []FileType
 	RecursiveSearch bool
+}
+
+type Message struct {
+	To          []string
+	CC          []string
+	BCC         []string
+	Subject     string
+	Body        string
+	Attachments map[string][]byte
+}
+
+func (c Config) AsEmailMessage(to string, document_paths []string) *Message {
+	message := Message{
+		To:      []string{to},
+		Subject: c.MailSubject,
+		Body:    c.MailBody,
+	}
+	for _, document_path := range document_paths {
+		message.AttachFile(document_path)
+	}
+	return &message
+}
+
+
+
+type EmailConfig struct {
+	SenderEmail  string
+	SMTPHost     string 
+	SMTPPort     string
+	Username string 
+	Password string 
 }
 
 type ExcelConfig struct {

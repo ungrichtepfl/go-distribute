@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/ungrichtepfl/go-distribute/pkg/distribute"
+	"os"
 )
 
 func main() {
@@ -18,12 +19,28 @@ func main() {
 		StartRow:     nil,
 		EndRow:       nil,
 	}
+	email_config := distribute.EmailConfig{
+		SenderEmail: "christoph.ungricht@outlook.com",
+		SMTPHost:    "smtp.office365.com",
+		SMTPPort:    "587",
+		Username:    "christoph.ungricht@outlook.com",
+		Password:    os.Getenv("EMAIL_PASSWORD"), // App Password
+	}
+
 	config := distribute.Config{
 		ExcelConfig:     excel_config,
+		EmailConfig:     email_config,
 		DocumentDir:     document_dir,
 		FileTypes:       []distribute.FileType{distribute.PDF, distribute.TXT},
 		RecursiveSearch: true,
 	}
+
+	err := distribute.SendEmail(config, "christoph.ungricht@outlook.com", []string{})
+	if err != nil {
+		fmt.Println("Error:\n", err)
+		return
+	}
+
 	lexed_data, err := distribute.EmailToName(config.ExcelConfig)
 
 	fmt.Println("Lexed Data:\n", lexed_data)
